@@ -107,14 +107,40 @@ export async function searchPlaces(
  * 開啟原生地圖導航，直接用座標定位（最精準）
  * iOS → Apple Maps, 其他 → Google Maps
  */
-export function openNavigation(lat: number, lng: number) {
+type NavigationTarget = {
+  lat?: number;
+  lng?: number;
+  address?: string;
+  name?: string;
+};
+
+function buildDestination(target: NavigationTarget): string | undefined {
+  if (target.lat != null && target.lng != null) {
+    return `${target.lat},${target.lng}`;
+  }
+
+  const text = (target.address || target.name || '').trim();
+  return text ? encodeURIComponent(text) : undefined;
+}
+
+export function getGoogleMapsDirectionsUrl(target: NavigationTarget): string | undefined {
+  const destination = buildDestination(target);
+  if (!destination) return undefined;
+  return `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
+}
+
+export function openNavigation(target: NavigationTarget) {
+  const destination = buildDestination(target);
+  if (!destination) return;
+
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
   if (isIOS) {
-    // Apple Maps：daddr=緯度,經度
-    window.open(`maps://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
+    // Apple Maps：daddr=緯度,經度或地址
+    // window.open(`maps://maps.apple.com/?daddr=${destination}&dirflg=d`, '_blank');
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}`, '_blank');
   } else {
-    // Google Maps：destination=緯度,經度（只用座標，不加其他 query 參數）
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+    // Google Maps：destination=緯度,經度或地址
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}`, '_blank');
   }
 }

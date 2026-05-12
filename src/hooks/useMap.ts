@@ -10,13 +10,13 @@ export function useMapSync(tripId: string) {
   useEffect(() => {
     if (!selectedEventId || !trip) return;
     const event = trip.events.find((e) => e.id === selectedEventId);
-    if (!event?.location) return;
+    if (!event?.location || event.location.lat == null || event.location.lng == null) return;
     setMapCenter([event.location.lat, event.location.lng]);
   }, [selectedEventId, trip, setMapCenter]);
 
   const focusOnMap = (eventId: string) => {
     const event = trip?.events.find((e) => e.id === eventId);
-    if (event?.location) {
+    if (event?.location && event.location.lat != null && event.location.lng != null) {
       setActiveTripTab('map');
       setMapCenter([event.location.lat, event.location.lng]);
     }

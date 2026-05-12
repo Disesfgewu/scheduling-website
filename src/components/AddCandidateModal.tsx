@@ -99,7 +99,7 @@ export function AddCandidateModal({ tripId }: Props) {
       location: selectedPlace
         ? { name: form.name || selectedPlace.name, address: form.address || selectedPlace.address, lat: selectedPlace.lat, lng: selectedPlace.lng }
         : form.address
-        ? { name: form.name, address: form.address, lat: 35.6762, lng: 139.6503 }
+        ? { name: form.name, address: form.address }
         : undefined,
     });
     setIsSaving(false);

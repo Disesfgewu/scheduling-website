@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef } from 'react';
 import type { Map as LeafletMap, Marker } from 'leaflet';
 import type { TripEvent } from '@/types';
+import { getGoogleMapsDirectionsUrl } from '@/lib/nominatim';
 
 interface MapViewProps {
   events: TripEvent[];
@@ -35,10 +36,10 @@ export default function MapView({ events, selectedEventId, onMarkerClick, classN
       const el = container as HTMLDivElement & { _leaflet_id?: number };
       if (el._leaflet_id) delete el._leaflet_id;
 
-      const eventsWithLoc = events.filter((e) => e.location);
+      const eventsWithLoc = events.filter((e) => e.location?.lat != null && e.location?.lng != null);
       const center: [number, number] =
         eventsWithLoc.length > 0
-          ? [eventsWithLoc[0].location!.lat, eventsWithLoc[0].location!.lng]
+          ? [eventsWithLoc[0].location!.lat!, eventsWithLoc[0].location!.lng!]
           : [35.6762, 139.6503];
 
       const map = L.map(container, { center, zoom: 13, zoomControl: false });
@@ -57,7 +58,7 @@ export default function MapView({ events, selectedEventId, onMarkerClick, classN
       Object.keys(byDate).sort().forEach((date, di) => {
         const dayEvents = byDate[date].sort((a, b) => a.time.localeCompare(b.time));
         if (dayEvents.length < 2) return;
-        const points = dayEvents.map((e) => [e.location!.lat, e.location!.lng] as [number, number]);
+        const points = dayEvents.map((e) => [e.location!.lat!, e.location!.lng!] as [number, number]);
         L.polyline(points, {
           color: DAY_COLORS[di % DAY_COLORS.length],
           weight: 2.5, opacity: 0.5, dashArray: '8, 10',
@@ -78,7 +79,10 @@ export default function MapView({ events, selectedEventId, onMarkerClick, classN
           </div>`;
         const customIcon = L.divIcon({ html: iconHtml, className: '', iconSize: [36, 44], iconAnchor: [18, 44], popupAnchor: [0, -44] });
 
-        const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${event.location!.lat},${event.location!.lng}`;
+        const navUrl = getGoogleMapsDirectionsUrl({
+          lat: event.location!.lat,
+          lng: event.location!.lng,
+        }) ?? '#';
         const popupContent = `
           <div style="font-family:system-ui,sans-serif;min-width:180px;padding:2px 0;">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
@@ -94,14 +98,14 @@ export default function MapView({ events, selectedEventId, onMarkerClick, classN
               font-family:system-ui;text-decoration:none;">🧭 導航</a>
           </div>`;
 
-        const marker = L.marker([event.location!.lat, event.location!.lng], { icon: customIcon }).addTo(map);
+        const marker = L.marker([event.location!.lat!, event.location!.lng!], { icon: customIcon }).addTo(map);
         marker.bindPopup(popupContent, { maxWidth: 240 });
         marker.on('click', () => onMarkerClick(event.id));
         markersRef.current.set(event.id, marker);
       });
 
       if (eventsWithLoc.length > 1) {
-        const bounds = L.latLngBounds(eventsWithLoc.map((e) => [e.location!.lat, e.location!.lng]));
+        const bounds = L.latLngBounds(eventsWithLoc.map((e) => [e.location!.lat!, e.location!.lng!]));
         map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15 });
       }
 
@@ -129,7 +133,7 @@ export default function MapView({ events, selectedEventId, onMarkerClick, classN
   useEffect(() => {
     if (!selectedEventId || !mapRef.current) return;
     const event = events.find((e) => e.id === selectedEventId);
-    if (!event?.location) return;
+    if (!event?.location || event.location.lat == null || event.location.lng == null) return;
     mapRef.current.setView([event.location.lat, event.location.lng], 16, { animate: true, duration: 0.8 });
     markersRef.current.get(selectedEventId)?.openPopup();
   }, [selectedEventId, events]);

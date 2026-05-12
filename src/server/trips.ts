@@ -62,8 +62,13 @@ type CandidateRow = {
 
 // ── Row → TypeScript 轉換 ─────────────────────────────────────
 function toLocation(row: Pick<EventRow | CandidateRow, 'location_name' | 'location_address' | 'lat' | 'lng'>): GeoLocation | undefined {
-  if (!row.lat || !row.location_name) return undefined;
-  return { name: row.location_name, address: row.location_address ?? undefined, lat: row.lat, lng: row.lng! };
+  if (!row.location_name) return undefined;
+  return {
+    name: row.location_name,
+    address: row.location_address ?? undefined,
+    lat: row.lat ?? undefined,
+    lng: row.lng ?? undefined,
+  };
 }
 
 function toUser(p: ProfileRow): User {

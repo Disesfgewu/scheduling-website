@@ -14,8 +14,8 @@ export type MemberRole = 'owner' | 'editor' | 'viewer';
 export interface GeoLocation {
   name: string;
   address?: string;
-  lat: number;
-  lng: number;
+  lat?: number;
+  lng?: number;
 }
 
 export interface TripEvent {

@@ -97,8 +97,8 @@ export function TimelineItem({ event, isSelected, isLast, onClick, onDelete }: T
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            {/* 導航按鈕：有地點就永遠顯示 */}
-            {event.location && (
+            {/* 導航按鈕：有座標或地址就顯示 */}
+            {event.location && (event.location.lat != null || event.location.lng != null || event.location.address || event.location.name) && (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -106,7 +106,12 @@ export function TimelineItem({ event, isSelected, isLast, onClick, onDelete }: T
                 title="導航"
                 onClick={(e) => {
                   e.stopPropagation();
-                  openNavigation(event.location!.lat, event.location!.lng);
+                  openNavigation({
+                    lat: event.location?.lat,
+                    lng: event.location?.lng,
+                    address: event.location?.address,
+                    name: event.location?.name,
+                  });
                 }}
               >
                 <Navigation className="h-3.5 w-3.5" />
