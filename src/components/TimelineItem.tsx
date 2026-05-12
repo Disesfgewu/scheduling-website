@@ -106,7 +106,7 @@ export function TimelineItem({ event, isSelected, isLast, onClick, onDelete }: T
                 title="導航"
                 onClick={(e) => {
                   e.stopPropagation();
-                  openNavigation(event.location!.lat, event.location!.lng, event.title);
+                  openNavigation(event.location!.lat, event.location!.lng);
                 }}
               >
                 <Navigation className="h-3.5 w-3.5" />

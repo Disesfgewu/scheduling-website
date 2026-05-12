@@ -28,9 +28,36 @@ export interface PlaceSearchResult {
   type: string;
 }
 
+// 國家名稱 → ISO 3166-1 alpha-2 code 對應表
+const COUNTRY_CODE_MAP: Record<string, string> = {
+  台灣: 'tw', 台湾: 'tw', Taiwan: 'tw',
+  日本: 'jp', Japan: 'jp',
+  韓國: 'kr', 韓国: 'kr', '南韓': 'kr', Korea: 'kr',
+  中國: 'cn', 中国: 'cn', China: 'cn',
+  美國: 'us', USA: 'us', 'United States': 'us',
+  泰國: 'th', Thailand: 'th',
+  越南: 'vn', Vietnam: 'vn',
+  新加坡: 'sg', Singapore: 'sg',
+  馬來西亞: 'my', Malaysia: 'my',
+  印尼: 'id', Indonesia: 'id',
+  菲律賓: 'ph', Philippines: 'ph',
+  香港: 'hk', 'Hong Kong': 'hk',
+  澳門: 'mo', Macau: 'mo',
+  法國: 'fr', France: 'fr',
+  德國: 'de', Germany: 'de',
+  義大利: 'it', Italy: 'it',
+  英國: 'gb', UK: 'gb', 'United Kingdom': 'gb',
+  澳洲: 'au', Australia: 'au',
+};
+
+export function countryNameToCode(country: string): string | undefined {
+  return COUNTRY_CODE_MAP[country.trim()];
+}
+
 export async function searchPlaces(
   query: string,
   signal?: AbortSignal,
+  countryCode?: string,
 ): Promise<PlaceSearchResult[]> {
   if (!query.trim()) return [];
 
@@ -41,6 +68,11 @@ export async function searchPlaces(
     addressdetails: '1',
     'accept-language': 'zh-TW,zh,en',
   });
+
+  // 限制在行程目的地國家內搜尋，避免搜到其他國家同名地點
+  if (countryCode) {
+    params.set('countrycodes', countryCode);
+  }
 
   const res = await fetch(
     `https://nominatim.openstreetmap.org/search?${params}`,
@@ -71,13 +103,18 @@ export async function searchPlaces(
   });
 }
 
-export function openNavigation(lat: number, lng: number, label?: string) {
+/**
+ * 開啟原生地圖導航，直接用座標定位（最精準）
+ * iOS → Apple Maps, 其他 → Google Maps
+ */
+export function openNavigation(lat: number, lng: number) {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const encodedLabel = label ? encodeURIComponent(label) : '';
 
   if (isIOS) {
-    window.open(`maps://maps.apple.com/?daddr=${lat},${lng}&dirflg=d${encodedLabel ? `&q=${encodedLabel}` : ''}`, '_blank');
+    // Apple Maps：daddr=緯度,經度
+    window.open(`maps://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
   } else {
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}${encodedLabel ? `&destination_place_id=${encodedLabel}` : ''}`, '_blank');
+    // Google Maps：destination=緯度,經度（只用座標，不加其他 query 參數）
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
   }
 }

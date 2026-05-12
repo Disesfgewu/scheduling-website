@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { useUIStore } from '@/store/uiStore';
 import { useTripStore } from '@/store/tripStore';
 import { CATEGORY_CONFIG, PRICE_LEVEL_LABELS, type EventCategory } from '@/types';
-import { searchPlaces, type PlaceSearchResult } from '@/lib/nominatim';
+import { searchPlaces, countryNameToCode, type PlaceSearchResult } from '@/lib/nominatim';
 
 interface Props {
   tripId: string;
@@ -34,7 +34,9 @@ const defaultForm = {
 
 export function AddCandidateModal({ tripId }: Props) {
   const { isAddCandidateOpen, closeAddCandidate } = useUIStore();
-  const { addCandidate } = useTripStore();
+  const { addCandidate, getTrip } = useTripStore();
+  const trip = getTrip(tripId);
+  const countryCode = trip?.country ? countryNameToCode(trip.country) : undefined;
 
   const [step, setStep] = useState<'search' | 'detail'>('search');
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,7 +54,7 @@ export function AddCandidateModal({ tripId }: Props) {
     abortRef.current = new AbortController();
     setIsSearching(true);
     try {
-      const results = await searchPlaces(q, abortRef.current.signal);
+      const results = await searchPlaces(q, abortRef.current.signal, countryCode);
       setSearchResults(results);
     } catch {
       // aborted or failed silently
