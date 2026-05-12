@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef } from 'react';
 import type { Map as LeafletMap, Marker } from 'leaflet';
 import type { TripEvent } from '@/types';
-import { getGoogleMapsDirectionsUrl } from '@/lib/nominatim';
+import { getGoogleMapsDirectionsUrl, isFallbackCoordinates } from '@/lib/nominatim';
 
 interface MapViewProps {
   events: TripEvent[];
@@ -36,7 +36,12 @@ export default function MapView({ events, selectedEventId, onMarkerClick, classN
       const el = container as HTMLDivElement & { _leaflet_id?: number };
       if (el._leaflet_id) delete el._leaflet_id;
 
-      const eventsWithLoc = events.filter((e) => e.location?.lat != null && e.location?.lng != null);
+      const eventsWithLoc = events.filter(
+        (e) =>
+          e.location?.lat != null &&
+          e.location?.lng != null &&
+          !isFallbackCoordinates(e.location.lat, e.location.lng),
+      );
       const center: [number, number] =
         eventsWithLoc.length > 0
           ? [eventsWithLoc[0].location!.lat!, eventsWithLoc[0].location!.lng!]
@@ -133,7 +138,12 @@ export default function MapView({ events, selectedEventId, onMarkerClick, classN
   useEffect(() => {
     if (!selectedEventId || !mapRef.current) return;
     const event = events.find((e) => e.id === selectedEventId);
-    if (!event?.location || event.location.lat == null || event.location.lng == null) return;
+    if (
+      !event?.location ||
+      event.location.lat == null ||
+      event.location.lng == null ||
+      isFallbackCoordinates(event.location.lat, event.location.lng)
+    ) return;
     mapRef.current.setView([event.location.lat, event.location.lng], 16, { animate: true, duration: 0.8 });
     markersRef.current.get(selectedEventId)?.openPopup();
   }, [selectedEventId, events]);

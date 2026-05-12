@@ -114,6 +114,17 @@ type NavigationTarget = {
   name?: string;
 };
 
+const FALLBACK_TOKYO = { lat: 35.6762, lng: 139.6503 } as const;
+const FALLBACK_EPSILON = 0.0001;
+
+export function isFallbackCoordinates(lat?: number, lng?: number): boolean {
+  if (lat == null || lng == null) return false;
+  return (
+    Math.abs(lat - FALLBACK_TOKYO.lat) < FALLBACK_EPSILON &&
+    Math.abs(lng - FALLBACK_TOKYO.lng) < FALLBACK_EPSILON
+  );
+}
+
 function buildDestination(target: NavigationTarget): string | undefined {
   if (target.lat != null && target.lng != null) {
     return `${target.lat},${target.lng}`;

@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { CATEGORY_CONFIG } from '@/types';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { openNavigation } from '@/lib/nominatim';
+import { isFallbackCoordinates, openNavigation } from '@/lib/nominatim';
 import type { TripEvent } from '@/types';
 
 interface TimelineItemProps {
@@ -106,9 +106,13 @@ export function TimelineItem({ event, isSelected, isLast, onClick, onDelete }: T
                 title="導航"
                 onClick={(e) => {
                   e.stopPropagation();
+                  const hasValidCoords =
+                    event.location?.lat != null &&
+                    event.location?.lng != null &&
+                    !isFallbackCoordinates(event.location.lat, event.location.lng);
                   openNavigation({
-                    lat: event.location?.lat,
-                    lng: event.location?.lng,
+                    lat: hasValidCoords ? event.location?.lat : undefined,
+                    lng: hasValidCoords ? event.location?.lng : undefined,
                     address: event.location?.address,
                     name: event.location?.name,
                   });
