@@ -5,6 +5,7 @@ import {
   createEvent as createEventRequest,
   createTrip as createTripRequest,
   deleteEvent as deleteEventRequest,
+  fetchPublicTripSnapshot,
   fetchTripSnapshot,
   fetchTrips,
   removeCandidate as removeCandidateRequest,
@@ -36,6 +37,7 @@ interface TripState {
 
   loadTrips: () => Promise<void>;
   loadTrip: (id: string, force?: boolean) => Promise<Trip | undefined>;
+  loadSharedTrip: (id: string, token: string) => Promise<Trip | undefined>;
   hasLoadedTrip: (id: string) => boolean;
   isTripLoading: (id: string) => boolean;
   isTripMissing: (id: string) => boolean;
@@ -186,6 +188,58 @@ export const useTripStore = create<TripState>((set, get) => ({
     } catch (error) {
       const message = normalizeError(error);
       const isMissing = error instanceof ApiError && error.status === 404;
+
+      set((current) => ({
+        loadingTripIds: {
+          ...current.loadingTripIds,
+          [id]: false,
+        },
+        loadedTripIds: {
+          ...current.loadedTripIds,
+          [id]: true,
+        },
+        missingTripIds: {
+          ...current.missingTripIds,
+          [id]: isMissing,
+        },
+        tripErrors: {
+          ...current.tripErrors,
+          [id]: isMissing ? null : message,
+        },
+      }));
+
+      return undefined;
+    }
+  },
+
+  loadSharedTrip: async (id, token) => {
+    const state = get();
+
+    if (state.loadingTripIds[id]) {
+      return state.getTrip(id);
+    }
+
+    set((current) => ({
+      selectedTripId: id,
+      loadingTripIds: {
+        ...current.loadingTripIds,
+        [id]: true,
+      },
+      tripErrors: {
+        ...current.tripErrors,
+        [id]: null,
+      },
+    }));
+
+    try {
+      const snapshot = await fetchPublicTripSnapshot(id, token);
+      set((current) => applySnapshot(current, id, snapshot));
+      return snapshot.trip;
+    } catch (error) {
+      const message = normalizeError(error);
+      const isMissing =
+        error instanceof ApiError &&
+        error.status === 404;
 
       set((current) => ({
         loadingTripIds: {

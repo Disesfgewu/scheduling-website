@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuthStore } from '@/store/authStore';
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') ?? '/';
@@ -26,18 +26,20 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
+
     const result = await login(email, password);
+
     setLoading(false);
     if (result.ok) {
       router.push(redirect);
-    } else {
-      setError(result.error ?? '登入失敗');
+      return;
     }
+
+    setError(result.error ?? 'Unable to sign in');
   };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <Link href="/" className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-xl bg-primary flex items-center justify-center">
@@ -48,7 +50,6 @@ export default function LoginPage() {
         <ThemeToggle />
       </div>
 
-      {/* Form */}
       <div className="flex-1 flex items-center justify-center px-4 py-8">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
@@ -56,10 +57,11 @@ export default function LoginPage() {
           transition={{ duration: 0.4 }}
           className="w-full max-w-sm"
         >
-          {/* Title */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-foreground mb-2">歡迎回來</h1>
-            <p className="text-muted-foreground text-sm">登入以繼續規劃你的旅行</p>
+            <h1 className="text-2xl font-bold text-foreground mb-2">Welcome Back</h1>
+            <p className="text-muted-foreground text-sm">
+              Sign in to keep planning trips and manage shared itineraries.
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -77,12 +79,12 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="password">密碼</Label>
+              <Label htmlFor="password">Password</Label>
               <div className="relative">
                 <Input
                   id="password"
                   type={showPw ? 'text' : 'password'}
-                  placeholder="輸入密碼"
+                  placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -91,7 +93,7 @@ export default function LoginPage() {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPw((v) => !v)}
+                  onClick={() => setShowPw((value) => !value)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -115,18 +117,34 @@ export default function LoginPage() {
               ) : (
                 <LogIn className="h-4 w-4" />
               )}
-              {loading ? '登入中...' : '登入'}
+              {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
 
           <p className="text-center text-sm text-muted-foreground mt-6">
-            還沒有帳號？{' '}
+            Don&apos;t have an account?{' '}
             <Link href="/register" className="text-primary font-medium hover:underline">
-              立即註冊
+              Create one
             </Link>
           </p>
         </motion.div>
       </div>
     </div>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

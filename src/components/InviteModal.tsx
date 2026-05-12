@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link2, Mail, Copy, Check, UserPlus, Loader2 } from 'lucide-react';
 import {
@@ -35,8 +35,7 @@ export function InviteModal({ tripId, open, onClose }: Props) {
       const res = await fetch(`/api/trips/${tripId}/invite-link`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
-      const base = window.location.origin;
-      setInviteUrl(`${base}/join/${json.data.token}`);
+      setInviteUrl(json.data.inviteUrl ?? '');
     } catch {
       setInviteUrl('');
     } finally {
@@ -49,8 +48,11 @@ export function InviteModal({ tripId, open, onClose }: Props) {
     if (t === 'link') generateLink();
   };
 
-  // auto-generate link when modal opens on link tab
-  useState(() => { if (open && tab === 'link') generateLink(); });
+  useEffect(() => {
+    if (open && tab === 'link') {
+      void generateLink();
+    }
+  }, [generateLink, open, tab]);
 
   const handleCopy = async () => {
     if (!inviteUrl) return;

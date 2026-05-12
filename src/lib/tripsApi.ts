@@ -75,6 +75,14 @@ export async function fetchTripSnapshot(tripId: string): Promise<TripSnapshotPay
   return request<TripSnapshotPayload>(`/api/trips/${tripId}`);
 }
 
+export async function fetchPublicTripSnapshot(
+  tripId: string,
+  token: string,
+): Promise<TripSnapshotPayload> {
+  const encodedToken = encodeURIComponent(token);
+  return request<TripSnapshotPayload>(`/api/trips/${tripId}/public?token=${encodedToken}`);
+}
+
 export async function createTrip(payload: CreateTripPayload): Promise<Trip> {
   const data = await request<{ trip: Trip }>('/api/trips', {
     method: 'POST',

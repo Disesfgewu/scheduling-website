@@ -166,6 +166,29 @@ export async function getTripSnapshot(tripId: string): Promise<TripSnapshot | nu
   };
 }
 
+export async function getPublicTripSnapshot(
+  tripId: string,
+  token: string,
+): Promise<TripSnapshot | null> {
+  const db = getDb();
+  const { data: invite, error } = await db
+    .from('trip_invites')
+    .select('trip_id, expires_at')
+    .eq('trip_id', tripId)
+    .eq('token', token)
+    .single();
+
+  if (error || !invite) {
+    return null;
+  }
+
+  if (new Date(invite.expires_at) < new Date()) {
+    throw new Error('Invite link expired');
+  }
+
+  return getTripSnapshot(tripId);
+}
+
 export async function createTrip(input: CreateTripInput): Promise<Trip> {
   const db = getDb();
   const ownerId = input.ownerId ?? input.owner?.id;

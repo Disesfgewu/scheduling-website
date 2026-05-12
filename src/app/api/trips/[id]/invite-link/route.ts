@@ -16,10 +16,11 @@ function getDb() {
 }
 
 // GET — 取得或建立邀請 token
-export async function GET(_req: Request, context: RouteContext) {
+export async function GET(req: Request, context: RouteContext) {
   try {
     const { id: tripId } = await context.params;
     const db = getDb();
+    const origin = new URL(req.url).origin;
 
     // 找現有的未過期邀請
     const { data: existing } = await db
@@ -32,7 +33,12 @@ export async function GET(_req: Request, context: RouteContext) {
       .single();
 
     if (existing) {
-      return NextResponse.json({ data: { token: existing.token } });
+      return NextResponse.json({
+        data: {
+          token: existing.token,
+          inviteUrl: `${origin}/trips/${tripId}?token=${existing.token}`,
+        },
+      });
     }
 
     // 建立新邀請 token
@@ -43,7 +49,12 @@ export async function GET(_req: Request, context: RouteContext) {
       .single();
 
     if (error) throw new Error(error.message);
-    return NextResponse.json({ data: { token: invite.token } });
+    return NextResponse.json({
+      data: {
+        token: invite.token,
+        inviteUrl: `${origin}/trips/${tripId}?token=${invite.token}`,
+      },
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to create invite' },

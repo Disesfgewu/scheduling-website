@@ -1,11 +1,11 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
-import { notFound } from 'next/navigation';
+import { use, useEffect, useRef, useState } from 'react';
+import { notFound, useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Calendar, Share2, MoreHorizontal, Crown, UserPlus } from 'lucide-react';
+import { MapPin, Calendar, Share2, MoreHorizontal, Crown, UserPlus, LogIn } from 'lucide-react';
 import { MobileHeader } from '@/components/MobileHeader';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { Timeline } from '@/components/Timeline';
@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useTripStore } from '@/store/tripStore';
 import { useUIStore } from '@/store/uiStore';
+import { useAuthStore } from '@/store/authStore';
 import { formatDateRange } from '@/lib/utils';
 
 const MapView = dynamic(() => import('@/components/MapView'), {
@@ -45,20 +46,94 @@ export default function TripDetailPage({ params }: PageProps) {
     selectEvent,
     getCandidates,
     loadTrip,
+    loadSharedTrip,
     hasLoadedTrip,
     isTripLoading,
     isTripMissing,
     getTripError,
   } = useTripStore();
-  const { activeTripTab } = useUIStore();
+  const { activeTripTab, setActiveTripTab } = useUIStore();
+  const { user, isAuthenticated, isLoading: isAuthLoading, initialize } = useAuthStore();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const token = searchParams.get('token');
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [isInviteReadOnly, setIsInviteReadOnly] = useState(false);
+  const [isAutoJoining, setIsAutoJoining] = useState(false);
+  const [inviteJoinError, setInviteJoinError] = useState('');
+  const autoJoinKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
+    void initialize();
+  }, [initialize]);
+
+  useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
+
+    if (!isAuthenticated && token) {
+      setIsInviteReadOnly(true);
+      void loadSharedTrip(id, token);
+      return;
+    }
+
+    setIsInviteReadOnly(false);
+
+    if (!isAuthenticated) {
+      const redirect = encodeURIComponent(`/trips/${id}`);
+      router.replace(`/login?redirect=${redirect}`);
+      return;
+    }
+
     void loadTrip(id);
-  }, [id, loadTrip]);
+  }, [id, isAuthenticated, isAuthLoading, loadSharedTrip, loadTrip, router, token]);
+
+  useEffect(() => {
+    if (!token || !user) {
+      return;
+    }
+
+    const joinKey = `${user.id}:${token}`;
+    if (autoJoinKeyRef.current === joinKey) {
+      return;
+    }
+
+    autoJoinKeyRef.current = joinKey;
+    setIsAutoJoining(true);
+    setInviteJoinError('');
+
+    void fetch(`/api/join/${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id }),
+    })
+      .then(async (response) => {
+        const json = await response.json();
+        if (!response.ok) {
+          throw new Error(json.error ?? 'Failed to join trip');
+        }
+      })
+      .catch((error) => {
+        setInviteJoinError(error instanceof Error ? error.message : 'Failed to join trip');
+      })
+      .finally(() => {
+        setIsAutoJoining(false);
+        void loadTrip(id, true);
+      });
+  }, [id, loadTrip, token, user]);
+
+  useEffect(() => {
+    if (isInviteReadOnly && activeTripTab !== 'timeline' && activeTripTab !== 'map') {
+      setActiveTripTab('timeline');
+    }
+  }, [activeTripTab, isInviteReadOnly, setActiveTripTab]);
 
   const trip = getTrip(id);
   const tripError = getTripError(id);
+  const loginRedirect = `/login?redirect=${encodeURIComponent(
+    token ? `/trips/${id}?token=${token}` : `/trips/${id}`,
+  )}`;
 
   if (!trip) {
     if (tripError) {
@@ -165,7 +240,7 @@ export default function TripDetailPage({ params }: PageProps) {
               <div className="font-bold text-base text-foreground">{trip.events.length}</div>
               <div className="text-[10px]">行程</div>
             </div>
-            {pendingCandidates > 0 && (
+            {!isInviteReadOnly && pendingCandidates > 0 && (
               <div className="text-center">
                 <div className="font-bold text-base text-amber-500">{pendingCandidates}</div>
                 <div className="text-[10px]">候選</div>
@@ -174,6 +249,54 @@ export default function TripDetailPage({ params }: PageProps) {
           </div>
         </div>
       </motion.div>
+
+      {isInviteReadOnly && (
+        <div className="mx-4 mb-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Read-only invite preview</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                You can view the timeline and map with this invite link. Log in to join the trip and unlock editing.
+              </p>
+            </div>
+            <Button size="sm" className="gap-1.5 shrink-0" onClick={() => router.push(loginRedirect)}>
+              <LogIn className="h-3.5 w-3.5" />
+              Log In
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {token && isAuthenticated && (isAutoJoining || inviteJoinError) && (
+        <div className="mx-4 mb-3 rounded-2xl border border-border bg-card px-4 py-3">
+          <p className="text-sm font-medium text-foreground">
+            {isAutoJoining ? 'Joining trip from invite link...' : 'Invite link could not auto-join this account.'}
+          </p>
+          {inviteJoinError && (
+            <p className="text-xs text-muted-foreground mt-1">{inviteJoinError}</p>
+          )}
+        </div>
+      )}
+
+      {isInviteReadOnly && (
+        <div className="mx-4 mb-3">
+          <div className="flex rounded-xl bg-muted p-1 gap-1">
+            {(['timeline', 'map'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTripTab(tab)}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTripTab === tab
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tab === 'timeline' ? 'Timeline' : 'Map'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Content area */}
       <div className="flex-1 overflow-hidden">
@@ -187,11 +310,11 @@ export default function TripDetailPage({ params }: PageProps) {
               transition={{ duration: 0.22 }}
               className="h-full overflow-y-auto pt-1"
             >
-              <Timeline trip={trip} />
+              <Timeline trip={trip} readOnly={isInviteReadOnly} />
             </motion.div>
           )}
 
-          {activeTripTab === 'candidates' && (
+          {!isInviteReadOnly && activeTripTab === 'candidates' && (
             <motion.div
               key="candidates"
               initial={{ opacity: 0, x: -8 }}
@@ -224,7 +347,7 @@ export default function TripDetailPage({ params }: PageProps) {
             </motion.div>
           )}
 
-          {activeTripTab === 'members' && (
+          {!isInviteReadOnly && activeTripTab === 'members' && (
             <motion.div
               key="members"
               initial={{ opacity: 0, x: 16 }}
@@ -272,13 +395,17 @@ export default function TripDetailPage({ params }: PageProps) {
         </AnimatePresence>
       </div>
 
-      {/* Bottom Navigation */}
-      <BottomNavigation tripId={trip.id} />
+      {!isInviteReadOnly && (
+        <>
+          {/* Bottom Navigation */}
+          <BottomNavigation tripId={trip.id} />
 
-      {/* Modals */}
-      <AddCandidateModal tripId={trip.id} />
-      <ScheduleModal tripId={trip.id} />
-      <InviteModal tripId={trip.id} open={inviteOpen} onClose={() => setInviteOpen(false)} />
+          {/* Modals */}
+          <AddCandidateModal tripId={trip.id} />
+          <ScheduleModal tripId={trip.id} />
+          <InviteModal tripId={trip.id} open={inviteOpen} onClose={() => setInviteOpen(false)} />
+        </>
+      )}
     </div>
   );
 }
