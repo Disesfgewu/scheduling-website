@@ -160,26 +160,56 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
   const ownerId = input.ownerId ?? input.owner?.id;
   if (!ownerId) throw new Error('owner_id is required');
 
+  // Ensure profile row exists (handles case where auth trigger hasn't run yet)
   if (input.owner) {
-    await db.from('profiles').upsert(
-      { id: ownerId, name: input.owner.name, initials: input.owner.initials, color: input.owner.color },
-      { onConflict: 'id', ignoreDuplicates: true },
+    const { error: profileErr } = await db.from('profiles').upsert(
+      {
+        id: ownerId,
+        name: input.owner.name || 'User',
+        initials: input.owner.initials || input.owner.name?.slice(0, 2).toUpperCase() || 'U',
+        color: input.owner.color || '#6366f1',
+      },
+      { onConflict: 'id' },
     );
+    if (profileErr) {
+      // Log but don't throw — profile may already exist via trigger
+      console.error('[createTrip] profile upsert error:', profileErr.message);
+    }
   }
 
-  const { data: trip, error } = await db.from('trips').insert({
-    title: input.title, description: input.description || null,
-    cover_image: input.coverImage || null, location: input.location || null,
-    country: input.country || null, start_date: input.startDate,
-    end_date: input.endDate, emoji: input.emoji, owner_id: ownerId,
+  const { data: trip, error: tripErr } = await db.from('trips').insert({
+    title: input.title,
+    description: input.description || null,
+    cover_image: input.coverImage || null,
+    location: input.location || null,
+    country: input.country || null,
+    start_date: input.startDate,
+    end_date: input.endDate,
+    emoji: input.emoji,
+    owner_id: ownerId,
   }).select().single();
-  if (error) throw new Error(error.message);
 
-  await db.from('trip_members').insert({ trip_id: trip.id, user_id: ownerId, role: 'owner' });
+  if (tripErr) {
+    console.error('[createTrip] trips insert error:', tripErr.message, tripErr.details, tripErr.hint);
+    throw new Error(tripErr.message);
+  }
 
-  const { data: full } = await db.from('trips')
+  const { error: memberErr } = await db.from('trip_members').insert({
+    trip_id: trip.id, user_id: ownerId, role: 'owner',
+  });
+  if (memberErr) {
+    console.error('[createTrip] trip_members insert error:', memberErr.message);
+  }
+
+  const { data: full, error: fullErr } = await db.from('trips')
     .select('*, trip_members(id, role, joined_at, profiles(*))')
     .eq('id', trip.id).single();
+
+  if (fullErr) {
+    console.error('[createTrip] final fetch error:', fullErr.message);
+    throw new Error(fullErr.message);
+  }
+
   return toTrip(full as TripRow);
 }
 

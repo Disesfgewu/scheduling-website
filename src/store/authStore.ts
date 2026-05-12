@@ -56,25 +56,42 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   // 頁面載入時呼叫，從 Supabase session 恢復登入狀態
   initialize: async () => {
-    const supabase = getClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    try {
+      const supabase = getClient();
+      const { data: { session } } = await supabase.auth.getSession();
 
-    if (!session?.user) {
+      if (!session?.user) {
+        set({ user: null, isAuthenticated: false, isLoading: false });
+        return;
+      }
+
+      let { data: profile } = await supabase
+        .from('profiles')
+        .select('id, name, initials, color, created_at')
+        .eq('id', session.user.id)
+        .single();
+
+      if (!profile) {
+        // Profile 不存在（trigger 未跑），自動建立
+        const name = session.user.user_metadata?.name ?? session.user.email?.split('@')[0] ?? 'User';
+        const initials = name.slice(0, 2).toUpperCase();
+        const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6'];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        await supabase.from('profiles').upsert(
+          { id: session.user.id, name, initials, color },
+          { onConflict: 'id' },
+        );
+        profile = { id: session.user.id, name, initials, color, created_at: new Date().toISOString() };
+      }
+
+      set({
+        user: toAuthUser(session.user.id, session.user.email ?? '', profile as ProfileRow),
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    } catch {
       set({ user: null, isAuthenticated: false, isLoading: false });
-      return;
     }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id, name, initials, color, created_at')
-      .eq('id', session.user.id)
-      .single();
-
-    set({
-      user: profile ? toAuthUser(session.user.id, session.user.email ?? '', profile as ProfileRow) : null,
-      isAuthenticated: true,
-      isLoading: false,
-    });
   },
 
   login: async (email, password) => {
@@ -88,14 +105,28 @@ export const useAuthStore = create<AuthState>((set) => ({
       return { ok: false, error: msg };
     }
 
-    const { data: profile } = await supabase
+    // 嘗試取得 profile，若不存在則用 auth user 資料建立基本 profile
+    let { data: profile } = await supabase
       .from('profiles')
       .select('id, name, initials, color, created_at')
       .eq('id', data.user.id)
       .single();
 
+    if (!profile) {
+      // Trigger 可能還沒跑，手動建立 profile
+      const name = data.user.user_metadata?.name ?? email.split('@')[0];
+      const initials = name.slice(0, 2).toUpperCase();
+      const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6'];
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      await supabase.from('profiles').upsert(
+        { id: data.user.id, name, initials, color },
+        { onConflict: 'id' },
+      );
+      profile = { id: data.user.id, name, initials, color, created_at: new Date().toISOString() };
+    }
+
     set({
-      user: profile ? toAuthUser(data.user.id, data.user.email ?? '', profile as ProfileRow) : null,
+      user: toAuthUser(data.user.id, data.user.email ?? '', profile as ProfileRow),
       isAuthenticated: true,
     });
 
@@ -123,19 +154,31 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     // 若 Supabase 要求 Email 確認，session 會是 null
     if (!data.session) {
-      return { ok: true, error: 'confirm_email' }; // 告訴 UI 顯示確認信提示
+      return { ok: true, error: 'confirm_email' };
     }
 
-    // 等 trigger 建立 profile（最多等 2 秒）
-    await new Promise((r) => setTimeout(r, 800));
-    const { data: profile } = await supabase
+    // 等 trigger 建立 profile（最多等 1 秒）
+    await new Promise((r) => setTimeout(r, 1000));
+    let { data: profile } = await supabase
       .from('profiles')
       .select('id, name, initials, color, created_at')
       .eq('id', data.user!.id)
       .single();
 
+    if (!profile) {
+      // Trigger 未跑，手動建立 profile
+      const initials = name.trim().slice(0, 2).toUpperCase();
+      const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6'];
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      await supabase.from('profiles').upsert(
+        { id: data.user!.id, name: name.trim(), initials, color },
+        { onConflict: 'id' },
+      );
+      profile = { id: data.user!.id, name: name.trim(), initials, color, created_at: new Date().toISOString() };
+    }
+
     set({
-      user: profile ? toAuthUser(data.user!.id, data.user!.email ?? '', profile as ProfileRow) : null,
+      user: toAuthUser(data.user!.id, data.user!.email ?? '', profile as ProfileRow),
       isAuthenticated: true,
     });
 
