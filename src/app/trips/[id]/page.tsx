@@ -1,11 +1,11 @@
 'use client';
 
-import { use, useEffect } from 'react';
+import { use, useEffect, useState } from 'react';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Calendar, Share2, MoreHorizontal, Crown, UserPlus } from 'lucide-react';
+import { MapPin, Calendar, Share2, MoreHorizontal, Crown, UserPlus, Check, Link } from 'lucide-react';
 import { MobileHeader } from '@/components/MobileHeader';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { Timeline } from '@/components/Timeline';
@@ -50,10 +50,41 @@ export default function TripDetailPage({ params }: PageProps) {
     getTripError,
   } = useTripStore();
   const { activeTripTab } = useUIStore();
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [inviteError, setInviteError] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     void loadTrip(id);
   }, [id, loadTrip]);
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return;
+    setInviteStatus('loading');
+    setInviteError('');
+    try {
+      const res = await fetch(`/api/trips/${id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? '邀請失敗');
+      setInviteStatus('success');
+      setInviteEmail('');
+      void loadTrip(id); // reload to get updated members
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : '邀請失敗');
+      setInviteStatus('error');
+    }
+  };
+
+  const handleCopyLink = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const trip = getTrip(id);
   const tripError = getTripError(id);
@@ -231,14 +262,9 @@ export default function TripDetailPage({ params }: PageProps) {
               transition={{ duration: 0.22 }}
               className="h-full overflow-y-auto px-4 pt-2 pb-28"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-foreground">成員 · {trip.members.length} 人</h2>
-                <Button size="sm" variant="outline" className="gap-1.5 rounded-xl">
-                  <UserPlus className="h-3.5 w-3.5" />
-                  邀請
-                </Button>
-              </div>
+              <h2 className="font-semibold text-foreground mb-4">成員 · {trip.members.length} 人</h2>
 
+              {/* Member list */}
               <div className="space-y-2 mb-6">
                 {trip.members.map((member, idx) => (
                   <motion.div
@@ -263,15 +289,54 @@ export default function TripDetailPage({ params }: PageProps) {
                 ))}
               </div>
 
-              <div className="p-4 rounded-2xl border border-dashed border-border text-center">
-                <div className="w-10 h-10 rounded-xl bg-muted mx-auto mb-2 flex items-center justify-center">
-                  <UserPlus className="h-5 w-5 text-muted-foreground" />
+              {/* Invite by email */}
+              <div className="p-4 rounded-2xl border border-border bg-card space-y-3">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="h-4 w-4 text-primary shrink-0" />
+                  <p className="text-sm font-medium">以 Email 邀請旅伴</p>
                 </div>
-                <p className="text-sm font-medium mb-1">邀請更多旅伴</p>
-                <p className="text-xs text-muted-foreground mb-3">分享連結讓朋友加入共同規劃行程</p>
-                <Button size="sm" variant="outline" className="gap-1.5">
-                  <Share2 className="h-3.5 w-3.5" />
-                  複製邀請連結
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    placeholder="friend@example.com"
+                    value={inviteEmail}
+                    onChange={(e) => { setInviteEmail(e.target.value); setInviteStatus('idle'); }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+                    className="flex-1 h-9 px-3 text-sm rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <Button
+                    size="sm"
+                    className="gap-1.5 shrink-0"
+                    onClick={handleInvite}
+                    disabled={inviteStatus === 'loading' || !inviteEmail.trim()}
+                  >
+                    {inviteStatus === 'loading' ? (
+                      <div className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    ) : inviteStatus === 'success' ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <UserPlus className="h-3.5 w-3.5" />
+                    )}
+                    {inviteStatus === 'success' ? '已邀請' : '邀請'}
+                  </Button>
+                </div>
+                {inviteStatus === 'error' && (
+                  <p className="text-xs text-destructive">{inviteError}</p>
+                )}
+                {inviteStatus === 'success' && (
+                  <p className="text-xs text-green-600 dark:text-green-400">✓ 已成功加入行程</p>
+                )}
+              </div>
+
+              {/* Copy link */}
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={handleCopyLink}
+                >
+                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Link className="h-4 w-4" />}
+                  {copied ? '連結已複製！' : '複製行程連結'}
                 </Button>
               </div>
             </motion.div>

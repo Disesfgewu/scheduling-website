@@ -148,7 +148,18 @@ export async function getTripSnapshot(tripId: string): Promise<TripSnapshot | nu
     db.from('trip_events').select('*').eq('trip_id', tripId).order('date').order('time'),
     db.from('candidate_places').select('*').eq('trip_id', tripId).order('added_at'),
   ]);
-  if (tripRes.error || !tripRes.data) return null;
+
+  if (tripRes.error || !tripRes.data) {
+    console.error('[getTripSnapshot] trip fetch error:', tripRes.error?.message);
+    return null;
+  }
+  if (eventsRes.error) {
+    console.error('[getTripSnapshot] events fetch error:', eventsRes.error.message, eventsRes.error.details);
+  }
+  if (candidatesRes.error) {
+    console.error('[getTripSnapshot] candidates fetch error:', candidatesRes.error.message);
+  }
+
   return {
     trip: toTrip(tripRes.data as TripRow, (eventsRes.data ?? []).map((r: EventRow) => toEvent(r))),
     candidates: (candidatesRes.data ?? []).map((r: CandidateRow) => toCandidate(r)),
