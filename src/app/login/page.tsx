@@ -24,8 +24,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 400));
-    const result = login(email, password);
+    const result = await login(email, password);
     setLoading(false);
     if (result.ok) {
       router.push('/');
@@ -59,13 +58,6 @@ export default function LoginPage() {
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-foreground mb-2">歡迎回來</h1>
             <p className="text-muted-foreground text-sm">登入以繼續規劃你的旅行</p>
-          </div>
-
-          {/* Demo hint */}
-          <div className="mb-6 p-3 rounded-xl bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground mb-1">Demo 帳號</p>
-            <p>Email：<code className="text-primary">martin@demo.com</code></p>
-            <p>密碼：<code className="text-primary">demo1234</code></p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -27,12 +27,13 @@ export default function RegisterPage() {
     setError('');
     if (password !== confirm) { setError('兩次密碼不一致'); return; }
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 400));
-    const result = register(name, email, password);
+    const result = await register(name, email, password);
     setLoading(false);
-    if (result.ok) {
+    if (result.ok && result.error !== 'confirm_email') {
       router.push('/');
-    } else {
+    } else if (result.error === 'confirm_email') {
+      setError('請到信箱確認驗證信後再登入');
+    } else if (!result.ok) {
       setError(result.error ?? '註冊失敗');
     }
   };

@@ -1,7 +1,14 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createClient } from '@supabase/supabase-js';
 
-// ─── Supabase-ready: replace login/register/logout with supabase.auth calls ───
+// ── Browser-side Supabase client（anon key，受 RLS 保護）──────
+function getClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { db: { schema: 'tripsync' } },
+  );
+}
 
 export interface AuthUser {
   id: string;
@@ -12,83 +19,131 @@ export interface AuthUser {
   createdAt: string;
 }
 
+interface ProfileRow {
+  id: string;
+  name: string;
+  initials: string;
+  color: string;
+  created_at: string;
+}
+
+function toAuthUser(userId: string, email: string, profile: ProfileRow): AuthUser {
+  return {
+    id: userId,
+    name: profile.name,
+    email,
+    initials: profile.initials,
+    color: profile.color,
+    createdAt: profile.created_at,
+  };
+}
+
 interface AuthState {
   user: AuthUser | null;
-  registeredUsers: AuthUser[];        // mock DB — replaced by Supabase
-  passwords: Record<string, string>;  // mock — never do this in production
-
   isAuthenticated: boolean;
-  login: (email: string, password: string) => { ok: boolean; error?: string };
-  register: (name: string, email: string, password: string) => { ok: boolean; error?: string };
-  logout: () => void;
+  isLoading: boolean;
+
+  initialize: () => Promise<void>;
+  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  register: (name: string, email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  logout: () => Promise<void>;
 }
 
-const DEMO_USERS: AuthUser[] = [
-  { id: 'u1', name: 'Martin Chen', email: 'martin@demo.com', initials: 'MC', color: '#6366f1', createdAt: '2026-01-01' },
-  { id: 'u2', name: 'Yuki Tanaka', email: 'yuki@demo.com', initials: 'YT', color: '#8b5cf6', createdAt: '2026-01-01' },
-];
-const DEMO_PASSWORDS: Record<string, string> = {
-  'martin@demo.com': 'demo1234',
-  'yuki@demo.com': 'demo1234',
-};
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: true,
 
-function toInitials(name: string): string {
-  return name.trim().split(/\s+/).map((w) => w[0]).join('').toUpperCase().slice(0, 2);
-}
-const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#f43f5e'];
+  // 頁面載入時呼叫，從 Supabase session 恢復登入狀態
+  initialize: async () => {
+    const supabase = getClient();
+    const { data: { session } } = await supabase.auth.getSession();
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      isAuthenticated: false,
-      registeredUsers: DEMO_USERS,
-      passwords: DEMO_PASSWORDS,
+    if (!session?.user) {
+      set({ user: null, isAuthenticated: false, isLoading: false });
+      return;
+    }
 
-      login: (email, password) => {
-        const { registeredUsers, passwords } = get();
-        const found = registeredUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
-        if (!found) return { ok: false, error: '找不到此帳號，請先註冊' };
-        if (passwords[found.email] !== password) return { ok: false, error: '密碼錯誤' };
-        set({ user: found, isAuthenticated: true });
-        return { ok: true };
-      },
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, name, initials, color, created_at')
+      .eq('id', session.user.id)
+      .single();
 
-      register: (name, email, password) => {
-        const { registeredUsers } = get();
-        if (!name.trim()) return { ok: false, error: '請輸入姓名' };
-        if (!email.includes('@')) return { ok: false, error: '請輸入有效的 Email' };
-        if (password.length < 6) return { ok: false, error: '密碼至少 6 個字元' };
-        if (registeredUsers.find((u) => u.email.toLowerCase() === email.toLowerCase())) {
-          return { ok: false, error: '此 Email 已被註冊' };
-        }
-        const newUser: AuthUser = {
-          id: `u-${Date.now()}`,
-          name: name.trim(),
-          email: email.toLowerCase(),
-          initials: toInitials(name),
-          color: COLORS[registeredUsers.length % COLORS.length],
-          createdAt: new Date().toISOString().slice(0, 10),
-        };
-        set((state) => ({
-          registeredUsers: [...state.registeredUsers, newUser],
-          passwords: { ...state.passwords, [newUser.email]: password },
-          user: newUser,
-          isAuthenticated: true,
-        }));
-        return { ok: true };
-      },
+    set({
+      user: profile ? toAuthUser(session.user.id, session.user.email ?? '', profile as ProfileRow) : null,
+      isAuthenticated: true,
+      isLoading: false,
+    });
+  },
 
-      logout: () => set({ user: null, isAuthenticated: false }),
-    }),
-    {
-      name: 'tripsync-auth',
-      partialize: (state) => ({
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
-        registeredUsers: state.registeredUsers,
-        passwords: state.passwords,
-      }),
-    },
-  ),
-);
+  login: async (email, password) => {
+    const supabase = getClient();
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      const msg = error.message.includes('Invalid login credentials')
+        ? '帳號或密碼錯誤'
+        : error.message;
+      return { ok: false, error: msg };
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, name, initials, color, created_at')
+      .eq('id', data.user.id)
+      .single();
+
+    set({
+      user: profile ? toAuthUser(data.user.id, data.user.email ?? '', profile as ProfileRow) : null,
+      isAuthenticated: true,
+    });
+
+    return { ok: true };
+  },
+
+  register: async (name, email, password) => {
+    if (!name.trim()) return { ok: false, error: '請輸入姓名' };
+    if (!email.includes('@')) return { ok: false, error: '請輸入有效的 Email' };
+    if (password.length < 6) return { ok: false, error: '密碼至少 6 個字元' };
+
+    const supabase = getClient();
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name: name.trim() } },
+    });
+
+    if (error) {
+      const msg = error.message.includes('already registered')
+        ? '此 Email 已被註冊'
+        : error.message;
+      return { ok: false, error: msg };
+    }
+
+    // 若 Supabase 要求 Email 確認，session 會是 null
+    if (!data.session) {
+      return { ok: true, error: 'confirm_email' }; // 告訴 UI 顯示確認信提示
+    }
+
+    // 等 trigger 建立 profile（最多等 2 秒）
+    await new Promise((r) => setTimeout(r, 800));
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, name, initials, color, created_at')
+      .eq('id', data.user!.id)
+      .single();
+
+    set({
+      user: profile ? toAuthUser(data.user!.id, data.user!.email ?? '', profile as ProfileRow) : null,
+      isAuthenticated: true,
+    });
+
+    return { ok: true };
+  },
+
+  logout: async () => {
+    await getClient().auth.signOut();
+    set({ user: null, isAuthenticated: false });
+  },
+}));
